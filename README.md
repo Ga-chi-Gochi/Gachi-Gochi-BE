@@ -19,6 +19,9 @@
   앱 쪽 기준 파일: `lib/walking-api.ts`, `lib/explore-api.ts`, `lib/bongging-certification.ts`, `lib/bongging-reward.ts`
 - 보상 숫자도 앱 상수(`constants/walking-reward.ts`, `lib/bongging-reward.ts`, `constants/explore.ts`, `constants/gochi-eggs.ts`)와 같게 둔다. 서버 쪽은 `supabase/functions/_shared/rewards.ts` 한 곳에 있다.
 - 형식을 바꾸고 싶으면 **나중에 바꾼다.** 바꿀 때는 이 문서를 먼저 고치고 프론트에 알린 다음, 서버 → 앱 순서로 배포한다.
+- **바뀐 것**
+  - 2026-11-19 걷기: 걷기 화면 설계에 따라 **자동 지급 → "보상 받게" 버튼으로 받기**로 바꿈.
+    요청 형식(`/walking/records`)은 앱 그대로이고, 보상 받기(`/walking/rewards/claim`)와 현황(`/walking/today`)이 추가됨. 앱 코드는 아직 자동 지급이라 맞춰야 함.
 - 앱에 없던 것 중 서버에 꼭 필요한 것(로그인 토큰 등)과 서버가 추가로 제공하는 API는 아래에 **(서버 추가)** 로 표시한다.
 
 ## 앱 연결 방법 (서버 추가 명세)
@@ -44,9 +47,37 @@
 
 날짜(`date`)는 `YYYY-MM-DD`이고, 서버는 한국 시간 기준으로 미래 날짜를 거부한다.
 
-### 걷기: `POST /walking/records` (앱 기준)
+### 걷기 ("보상 받게" 버튼 방식)
 
-앱 `lib/walking-api.ts`. 걸음 수가 바뀔 때마다 보낸다. **보상은 자동 지급.**
+화면: 걸음이 1,000 · 3,000 · 5,000보에 닿으면 그 단계의 귤이 **활성화**되고, "보상 받게" 버튼을 누르면 **지금까지 활성화된 귤을 한꺼번에** 받는다.
+단계마다 귤(코인) 10 · 경험치 5. 같은 날짜·단계는 한 번만 받는다. 하루 목표(진행 막대 끝)는 10,000보.
+
+| 요청 | 언제 |
+|---|---|
+| `POST /walking/records` | 걸음 수가 바뀔 때마다. **저장만** 하고 보상은 주지 않는다 |
+| `POST /walking/rewards/claim` | "보상 받게" 버튼을 눌렀을 때 |
+| `GET /walking/today?date=` | 걷기 화면을 열 때 (`date` 없으면 오늘) |
+
+세 요청 모두 아래 **걷기 현황**을 돌려준다.
+```json
+{
+  "date": "2026-11-19",
+  "steps": 3200,
+  "distanceMeters": 2240,
+  "goalSteps": 10000,
+  "tiers": [
+    { "steps": 1000, "coins": 10, "xp": 5, "reached": true,  "claimed": true  },
+    { "steps": 3000, "coins": 10, "xp": 5, "reached": true,  "claimed": false },
+    { "steps": 5000, "coins": 10, "xp": 5, "reached": false, "claimed": false }
+  ],
+  "claimableSteps": [3000],
+  "claimedSteps": [1000]
+}
+```
+- 단계 카드: `claimed` → 체크 표시, `reached && !claimed` → 활성화(받을 수 있음), `!reached` → 잠김
+- "보상 받게" 버튼: `claimableSteps`가 비어 있지 않을 때만 켠다
+
+#### `POST /walking/records` (요청 형식은 앱 `lib/walking-api.ts` 그대로)
 
 요청
 ```json
@@ -61,13 +92,18 @@
 - `steps`, `distanceMeters`: 그날 0시부터의 **누적값**. 저장된 값보다 작으면 무시한다(줄어들지 않음). 각각 0 ~ 100,000
 - `source`: `mock` | `healthkit` | `healthconnect`
 
-응답 200
+응답 200: `{ "reward": null, ...걷기 현황 }`
+- `reward`는 항상 `null`이다. (앱의 기존 응답 해석 코드가 깨지지 않게 남겨 둔 값)
+
+#### `POST /walking/rewards/claim`
+
+요청
 ```json
-{ "reward": { "coins": 20, "xp": 10 }, "claimedSteps": [1000, 3000] }
+{ "date": "2026-11-19" }
 ```
-- `reward`: **이번 요청으로 새로 지급된 보상.** 없으면 `null`. 한 번에 여러 단계를 넘으면 합쳐서 준다.
-- `claimedSteps`: 그날 보상을 받은 단계 전체
-- 단계: 1,000 · 3,000 · 5,000보, 단계마다 코인 10 · 경험치 5. 같은 날짜·단계는 한 번만 준다.
+응답 200: `{ "reward": { "coins": 20, "xp": 10 }, "rewardedSteps": [1000, 3000], ...걷기 현황 }`
+- `reward`: 이번에 받은 합계, `rewardedSteps`: 이번에 받은 단계
+- 받을 것이 없으면 `409 NOTHING_TO_CLAIM` (버튼을 두 번 눌렀을 때 등)
 
 ### 탐험: `POST /explore/trips` (앱 기준)
 
@@ -141,6 +177,7 @@
 | `METHOD_NOT_ALLOWED` | 405 | GET/POST 잘못 |
 | `DUPLICATE_IMAGE` | 409 | 이미 인증에 쓴 사진 |
 | `ALREADY_CLAIMED` | 409 | 이미 받은 보상 |
+| `NOTHING_TO_CLAIM` | 409 | 지금 받을 수 있는 걷기 보상이 없음 |
 | `EXPLORE_IN_PROGRESS` | 409 | 아직 끝나지 않은 탐험이 있음 |
 | `EXPLORE_NOT_FINISHED` | 409 | 탐험이 아직 안 끝나서 보상 불가 |
 | `DAILY_LIMIT_EXCEEDED` | 429 | 오늘 횟수 다 씀 |
@@ -202,7 +239,7 @@ npx supabase functions deploy walking explore bongging me --use-api  # 서버 �
 ## 확인 (테스트)
 
 ```bash
-SUPABASE_PUBLISHABLE_KEY=<publishable 키> npm run test:api                 # 걷기·탐험·권한
+SUPABASE_PUBLISHABLE_KEY=<publishable 키> npm run test:api                 # 걷기(버튼으로 받기)·탐험·권한
 SUPABASE_PUBLISHABLE_KEY=<publishable 키> npm run test:api -- 사진.jpg     # 봉그깅(실제 Gemini)까지
 ```
 

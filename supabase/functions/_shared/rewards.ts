@@ -1,7 +1,11 @@
 // 보상·제한 숫자는 임시값이라 코드 곳곳에 쓰지 않고 여기 한 곳에만 둔다.
 // 앱(FE) 쪽 상수와 같은 값으로 맞춰 두었다. 밸런스를 바꿀 때는 양쪽을 같이 바꾼다.
 
-// 걷기 단계별 보상 (FE constants/walking-reward.ts: 1,000 · 3,000 · 5,000보, 단계마다 코인 10 · 경험치 5)
+// 걷기 하루 목표 (FE WALKING_GOAL_STEPS, 화면의 진행 막대 끝)
+export const WALK_GOAL_STEPS = 10_000;
+
+// 걷기 단계별 보상 (FE constants/walking-reward.ts: 1,000 · 3,000 · 5,000보, 단계마다 귤코인 10 · 경험치 5)
+// coins = 화면의 "귤". "보상 받게" 버튼을 누르면 도달한 단계를 한꺼번에 받는다.
 export const WALK_TIERS = [
   { tier: 1000, coins: 10, xp: 5 },
   { tier: 3000, coins: 10, xp: 5 },

@@ -10,6 +10,7 @@ export const ERRORS = {
   METHOD_NOT_ALLOWED: { status: 405, message: '지원하지 않는 요청 방식이에요.' },
   DUPLICATE_IMAGE: { status: 409, message: '이미 인증에 쓴 사진이에요.' },
   ALREADY_CLAIMED: { status: 409, message: '이미 받은 보상이에요.' },
+  NOTHING_TO_CLAIM: { status: 409, message: '지금 받을 수 있는 보상이 없어요.' },
   NOT_ENOUGH_STEPS: { status: 409, message: '아직 걸음 수가 모자라요.' },
   EXPLORE_IN_PROGRESS: { status: 409, message: '이미 탐험 중인 고치가 있어요.' },
   EXPLORE_NOT_FINISHED: { status: 409, message: '아직 탐험이 끝나지 않았어요.' },

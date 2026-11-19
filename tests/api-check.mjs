@@ -47,17 +47,28 @@ const today = new Date(Date.now() + 9 * 3600e3).toISOString().slice(0, 10);
 const noAuth = await fetch(`${FN}/me`);
 check('토큰 없이 → 401', noAuth.status === 401, noAuth.status);
 
-// 걷기 (앱 lib/walking-api.ts 형식, 자동 지급)
+// 걷기 ("보상 받게" 버튼 방식: 저장은 records, 받기는 rewards/claim)
 const walk = (steps, distanceMeters) =>
   post('/walking/records', { date: today, steps, distanceMeters, source: 'mock', syncedAt: new Date().toISOString() });
+const pick = (j) => ({ steps: j.steps, claimable: j.claimableSteps, claimed: j.claimedSteps, reward: j.reward });
 let r = await walk(500, 350);
-check('걷기 500보 → 보상 없음', r.status === 200 && r.json.reward === null, r.json);
+check('걷기 500보 저장 → 받을 것 없음', r.status === 200 && r.json.reward === null && r.json.claimableSteps?.length === 0, pick(r.json));
+r = await post('/walking/rewards/claim', { date: today });
+check('받을 것 없을 때 버튼 → NOTHING_TO_CLAIM', r.json.error?.code === 'NOTHING_TO_CLAIM', r.json.error?.code);
 r = await walk(3200, 2240);
-check('걷기 3200보 → 두 단계 합쳐서 지급', r.json.reward?.coins === 20 && r.json.reward?.xp === 10, r.json);
-r = await walk(3300, 2300);
-check('걷기 다시 → 중복 지급 없음', r.json.reward === null && r.json.claimedSteps?.length === 2, r.json);
+check('걷기 3200보 저장 → 1000·3000 활성화, 아직 지급 안 함', r.json.reward === null && JSON.stringify(r.json.claimableSteps) === '[1000,3000]', pick(r.json));
+r = await post('/walking/rewards/claim', { date: today });
+check('버튼 → 활성화된 두 단계 한꺼번에 받기 (귤 20)', r.json.reward?.coins === 20 && r.json.reward?.xp === 10 && r.json.claimableSteps?.length === 0, pick(r.json));
+r = await post('/walking/rewards/claim', { date: today });
+check('바로 다시 버튼 → NOTHING_TO_CLAIM', r.json.error?.code === 'NOTHING_TO_CLAIM', r.json.error?.code);
 r = await walk(100, 50);
-check('더 작은 걸음 수 → 무시', r.json.reward === null && r.json.claimedSteps?.length === 2, r.json);
+check('더 작은 걸음 수 → 무시', r.json.steps === 3200, pick(r.json));
+r = await walk(5100, 3600);
+check('5100보 → 5000만 새로 활성화', JSON.stringify(r.json.claimableSteps) === '[5000]', pick(r.json));
+const status = await fetch(`${FN}/walking/today?date=${today}`, { headers: H }).then((x) => x.json());
+check('오늘 현황 (화면 열 때)', status.goalSteps === 10000 && status.distanceMeters === 3600 && status.tiers?.length === 3, status.tiers?.map((t) => [t.steps, t.reached, t.claimed]));
+r = await post('/walking/rewards/claim', { date: today });
+check('버튼 → 5000 단계 받기 (귤 10)', r.json.reward?.coins === 10 && JSON.stringify(r.json.rewardedSteps) === '[5000]', pick(r.json));
 r = await post('/walking/records', { date: '2099-01-01', steps: 1, distanceMeters: 1, source: 'mock' });
 check('미래 날짜 → 400', r.status === 400, r.json.error?.code);
 
@@ -100,7 +111,7 @@ if (photoPath) {
 
 // 내 정보
 const me = await fetch(`${FN}/me`, { headers: H }).then((x) => x.json());
-check('내 정보', me.stats?.coins === 20, me.stats);
+check('내 정보 (귤코인 30)', me.stats?.coins === 30, me.stats);
 
 // 권한: 앱이 DB에 직접 쓰거나 보상 DB 함수를 부를 수 없어야 한다
 const rest = `${BASE}/rest/v1`;

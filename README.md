@@ -27,7 +27,70 @@ MVP 배포(갤럭시 APK, 아이폰 웹 링크)에서는 로그인 화면 없이
 - 앱의 `.env`에서 `EXPO_PUBLIC_GEMINI_API_KEY`는 비워 두고, `EXPO_PUBLIC_API_URL`도 비워 둔다(비어 있으면 걷기·탐험이 폰 저장소로만 동작한다).
 - 걷기·탐험·내 정보 API는 만들어 두었다. **정식 출시 때 카카오 등 로그인과 함께 연결**한다.
 - 폰 저장이라 앱을 지우거나 앱 데이터를 지우면 기록이 사라진다. 아이폰 웹은 사파리 데이터 삭제·개인정보 보호 모드에서도 사라지니 **"홈 화면에 추가"해서 쓰도록 안내**한다.
-- 익명 가입은 같은 IP(같은 와이파이)에서 **시간당 30번**까지다(Authentication → Rate Limits). 많은 사람이 모이는 체험 행사 전에 올린다.
+- 익명 가입은 같은 IP(같은 와이파이)에서 **시간당 300번**까지다(Authentication → Rate Limits, 2026-11-23 기본값 30에서 올림).
+
+## 프론트가 할 일 (MVP)
+
+> 백엔드에서 받을 것은 **publishable 키 하나**다(따로 전달). 나머지는 이 문서에 있다.
+> 키는 앱에 들어가도 되는 공개 키지만, 레포·공개 채팅방에는 올리지 않는다. 앱의 `.env`에 넣는다.
+
+**MVP에서 연결할 것은 봉그깅 하나다.** 귤·상점·섬·탐험·걷기는 지금처럼 폰 저장 그대로 둔다.
+
+1. **패키지 설치**: `npx expo install @supabase/supabase-js @react-native-async-storage/async-storage`
+2. **`.env`**
+   ```
+   EXPO_PUBLIC_SUPABASE_URL=https://rlhdjijbnstdlfzjmxcd.supabase.co
+   EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY=<백엔드에서 받은 publishable 키>
+   EXPO_PUBLIC_GEMINI_API_KEY=        # 비워 둔다 (Gemini는 서버가 부른다)
+   EXPO_PUBLIC_API_URL=               # 비워 둔다 (걷기·탐험은 MVP에서 폰 저장)
+   ```
+3. **익명 로그인 (화면 없음)**: 앱 시작할 때 세션이 없으면 한 번만 로그인한다. 세션은 폰 저장소에 남아서 다음부터는 같은 사용자다.
+   ```ts
+   // lib/supabase.ts
+   import AsyncStorage from '@react-native-async-storage/async-storage';
+   import { createClient } from '@supabase/supabase-js';
+
+   export const supabase = createClient(
+     process.env.EXPO_PUBLIC_SUPABASE_URL!,
+     process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+     { auth: { storage: AsyncStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: false } },
+   );
+
+   export async function ensureSignedIn() {
+     const { data } = await supabase.auth.getSession();
+     if (data.session) return data.session;
+     const { data: signed, error } = await supabase.auth.signInAnonymously();
+     if (error) throw error;
+     return signed.session!;
+   }
+   ```
+4. **사진을 줄여서** 서버로 보낸다. 긴 변 1280px JPEG 정도 (`expo-image-manipulator`).
+   서버는 10MB까지 받지만, 원본 그대로 보내면 올리는 데 오래 걸리고 무료 저장 용량(1GB)이 300장 정도에서 찬다.
+5. **봉그깅 판별을 서버로**: `lib/bongging-recognition.ts`의 Gemini 직접 호출 대신 아래처럼 보낸다. 필드와 응답은 아래 [봉그깅 명세](#봉그깅-post-bonggingcertifications-앱-기준).
+   ```ts
+   const session = await ensureSignedIn();
+   const form = new FormData();
+   form.append('image', { uri: resizedUri, name: 'bongging.jpg', type: 'image/jpeg' } as any); // 웹에서는 Blob
+   form.append('capturedAt', new Date().toISOString());
+   form.append('locationSource', 'none'); // 위치가 있으면 'exif' | 'device' + latitude, longitude
+
+   const res = await fetch(`${process.env.EXPO_PUBLIC_SUPABASE_URL}/functions/v1/bongging/certifications`, {
+     method: 'POST',
+     headers: {
+       apikey: process.env.EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+       Authorization: `Bearer ${session.access_token}`,
+     },
+     body: form, // Content-Type은 넣지 않는다 (fetch가 알아서 넣는다)
+   });
+   const body = await res.json();
+   // 성공: body.status === 'success' | 'failure', 실패: body.error.code (아래 실패 응답 표)
+   ```
+6. **경험치는 폰 저장소에 더한다**: 응답의 `xp`·`growthStacks`를 지금 앱이 하던 대로 폰 저장소에 더한다. 응답의 `stats`(서버 재화)는 MVP에서 쓰지 않는다.
+
+**참고: 아이폰 웹 버전**
+- 웹에서는 `Alert.alert` 창이 뜨지 않는다. 봉그깅의 위치 확인(`lib/resolve-bongging-location.ts`)·오프라인 확인 단계에서 답을 기다리다 멈추니, 웹에서는 다른 확인 창을 써야 한다.
+- 웹에서는 걸음 수를 읽을 수 없다(걷기 화면에 "이 기기에서는 걸음 수를 읽을 수 없어요").
+- 아이폰 사파리에서 카메라를 쓰려면 사이트가 https여야 한다.
 
 ## API 기준: 앱(FE) 코드를 따른다
 

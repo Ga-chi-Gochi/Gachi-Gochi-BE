@@ -44,6 +44,15 @@ MVP 배포(갤럭시 APK, 아이폰 웹 링크)에서는 로그인 화면 없이
    EXPO_PUBLIC_GEMINI_API_KEY=        # 비워 둔다 (Gemini는 서버가 부른다)
    EXPO_PUBLIC_API_URL=               # 비워 둔다 (걷기·탐험은 MVP에서 폰 저장)
    ```
+   - `.env`는 앱 폴더 맨 위(`package.json`과 같은 곳)에 있는 **파일**이다. `.gitignore`에 있어서 GitHub에 안 올라가니 팀원이 각자 만든다.
+   - 코드에는 키를 직접 쓰지 않는다. `process.env.EXPO_PUBLIC_...`로 읽기만 한다.
+   - **EAS로 APK를 빌드할 때는 `.env`가 EAS 서버로 올라가지 않는다**(git이 무시하는 파일은 빠진다). 빌드하는 사람이 EAS에 한 번 등록한다.
+     ```
+     eas env:create --name EXPO_PUBLIC_SUPABASE_URL --value https://rlhdjijbnstdlfzjmxcd.supabase.co --environment preview --visibility plaintext
+     eas env:create --name EXPO_PUBLIC_SUPABASE_PUBLISHABLE_KEY --value <publishable 키> --environment preview --visibility plaintext
+     ```
+     expo.dev → 프로젝트 → Environment variables 화면에서 넣어도 같다. 그다음 `eas build --profile preview`.
+     (`production` 프로필로도 빌드하면 `--environment production`으로 한 번 더 등록한다.)
 3. **익명 로그인 (화면 없음)**: 앱 시작할 때 세션이 없으면 한 번만 로그인한다. 세션은 폰 저장소에 남아서 다음부터는 같은 사용자다.
    ```ts
    // lib/supabase.ts

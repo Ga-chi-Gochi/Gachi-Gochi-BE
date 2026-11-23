@@ -1,0 +1,16 @@
+{
+  "name": "gachigochi-be",
+  "private": true,
+  "description": "가치고치 백엔드 (Supabase)",
+  "scripts": {
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "functions:serve": "supabase functions serve --env-file supabase/functions/.env",
+    "status": "supabase status",
+    "test:api": "node tests/api-check.mjs"
+  },
+  "devDependencies": {
+    "supabase": "^2.120.0"
+  }
+}

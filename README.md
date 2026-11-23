@@ -13,6 +13,22 @@
 
 ---
 
+## MVP 범위 (2026-11-23 결정): 게임은 폰 저장, 봉그깅만 서버
+
+MVP 배포(갤럭시 APK, 아이폰 웹 링크)에서는 로그인 화면 없이 깔면 바로 쓰게 한다.
+
+| 기능 | MVP에서 | 이유 |
+|---|---|---|
+| 귤 잔액, 상점, 섬 꾸미기, 탐험, 알, 걷기 | **폰 저장소(AsyncStorage)에만 저장. 서버 연결 안 함** | 지금 앱 코드 그대로. 서버 DB는 쓰지 않는다 |
+| **봉그깅 사진 판별** | **서버 연결** (`POST /bongging/certifications`) | Gemini 키를 앱에 넣으면 누구나 꺼내 쓸 수 있다. 판별 기록이 서버에 남아 참여 통계를 낼 수 있다 |
+
+- 봉그깅을 부르기 위해 앱은 **화면 없이 익명 로그인**만 한다(아래 "앱 연결 방법" 1·2번). 사용자에게 보이는 로그인·회원가입 화면은 없다.
+- 서버가 돌려준 봉그깅 경험치(`xp`, `growthStacks`)는 **앱이 폰 저장소에 더한다.** MVP 동안 서버의 `user_stats`(재화)는 화면에 쓰지 않는다.
+- 앱의 `.env`에서 `EXPO_PUBLIC_GEMINI_API_KEY`는 비워 두고, `EXPO_PUBLIC_API_URL`도 비워 둔다(비어 있으면 걷기·탐험이 폰 저장소로만 동작한다).
+- 걷기·탐험·내 정보 API는 만들어 두었다. **정식 출시 때 카카오 등 로그인과 함께 연결**한다.
+- 폰 저장이라 앱을 지우거나 앱 데이터를 지우면 기록이 사라진다. 아이폰 웹은 사파리 데이터 삭제·개인정보 보호 모드에서도 사라지니 **"홈 화면에 추가"해서 쓰도록 안내**한다.
+- 익명 가입은 같은 IP(같은 와이파이)에서 **시간당 30번**까지다(Authentication → Rate Limits). 많은 사람이 모이는 체험 행사 전에 올린다.
+
 ## API 기준: 앱(FE) 코드를 따른다
 
 - **API 주소·요청·응답 형식은 지금 앱 코드([Gachi-Gochi-FE](https://github.com/Ga-chi-Gochi/Gachi-Gochi-FE))에 적힌 형식을 기준으로 한다.**
@@ -35,7 +51,7 @@
    apikey: <publishable 키>
    Authorization: Bearer <로그인 세션의 access_token>
    ```
-3. **서버 주소**: 앱의 `WALKING_API_BASE_URL`, `EXPLORE_API_BASE_URL` 등에
+3. **서버 주소** (정식 출시 때. MVP에서는 비워 둔다): 앱의 `WALKING_API_BASE_URL`, `EXPLORE_API_BASE_URL` 등에
    `https://rlhdjijbnstdlfzjmxcd.supabase.co/functions/v1` 을 넣는다. (그 뒤에 `/walking/records` 등이 붙는다)
 4. **봉그깅**: 앱이 Gemini를 직접 부르는 `lib/bongging-recognition.ts` 대신 사진을 서버로 보낸다. 판별은 서버가 한다.
    사진은 올리기 전에 긴 변 1280px JPEG 정도로 줄인다. (무료 저장 용량 1GB)
